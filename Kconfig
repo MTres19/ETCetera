@@ -1,0 +1,24 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config INDUSTRY_ETCETERA
+	tristate "ETCetera Throttle Controller"
+	default n
+	select NSH_LIBRARY
+	select SYSTEM_READLINE
+	---help---
+		Enable building the ETCetera throttle controller.
+
+if INDUSTRY_ETCETERA
+
+config INDUSTRY_ETCETERA_PRIORITY
+	int "ETCetera thread priority"
+	default 100
+
+config INDUSTRY_ETCETERA_STACKSIZE
+	int "ETCetera stack size"
+	default DEFAULT_TASK_STACKSIZE
+
+endif

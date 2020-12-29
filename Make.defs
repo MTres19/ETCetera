@@ -1,0 +1,5 @@
+# Copied with only minor changes from apps/system/nsh
+
+ifneq ($(CONFIG_INDUSTRY_ETCETERA),)
+CONFIGURED_APPS += $(APPDIR)/industry/ETCetera
+endif
