@@ -23,12 +23,16 @@
  * Included Files
  ****************************************************************************/
 
+#include <nuttx/config.h>
+#include <sched.h>
+#include <stdint.h>
+#include <stdio.h>
 
+#include "nshlib/nshlib.h"
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
-
 
 
 /****************************************************************************
@@ -36,17 +40,17 @@
  ****************************************************************************/
 
 
-
 /****************************************************************************
  * Private Function Prototypes
  ****************************************************************************/
 
+/* Defined by the NSH example application */
 
+int nsh_main(int argc, char **argv);
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
-
 
 
 /****************************************************************************
@@ -54,30 +58,9 @@
  ****************************************************************************/
 
 
-
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-
-/****************************************************************************
- * Name: <Static function name>
- *
- * Description:
- *   Description of the operation of the static function.
- *
- * Input Parameters:
- *   A list of input parameters, one-per-line, appears here along with a
- *   description of each input parameter.
- *
- * Returned Value:
- *   Description of the value returned by this function (if any),
- *   including an enumeration of all possible error values.
- *
- * Assumptions/Limitations:
- *   Anything else that one might need to know to use this function.
- *
- ****************************************************************************/
-
 
 
 /****************************************************************************
@@ -85,22 +68,23 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Name: <Global function name>
+ * Name: main
  *
  * Description:
- *   Description of the operation of the function.
- *
- * Input Parameters:
- *   A list of input parameters, one-per-line, appears here along with a
- *   description of each input parameter.
- *
- * Returned Value:
- *   Description of the value returned by this function (if any),
- *   including an enumeration of all possible error values.
- *
- * Assumptions/Limitations:
- *   Anything else that one might need to know to use this function.
+ *   Entry point for the ETCetera daemon. Starts a task to run NuttShell then
+ *   continues on.
  *
  ****************************************************************************/
 
-
+int main(int argc, char **argv)
+{
+#ifdef CONFIG_SYSTEM_NSH
+  task_create("nsh",
+              CONFIG_SYSTEM_NSH_PRIORITY,
+              CONFIG_SYSTEM_NSH_STACKSIZE,
+              nsh_main,
+              NULL
+             );
+#endif
+  while (true);
+}
