@@ -78,6 +78,7 @@ int nsh_main(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
+  printf("ETCetera: starting NuttShell. Type \"help\" for commands.\n");
 #ifdef CONFIG_SYSTEM_NSH
   task_create("nsh",
               CONFIG_SYSTEM_NSH_PRIORITY,
