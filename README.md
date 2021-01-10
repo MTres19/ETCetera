@@ -50,7 +50,9 @@ Next, change some Kconfig options with `make menuconfig`:
     - Set **Application entry point** to “ETCetera_main”
   - Under **Work queue support**:
     - Enable “High priority (kernel) worker thread.” (This is required for the
-      Tiva ADC driver.
+      Tiva ADC driver.)
+    - Enable "Low priority (kernel) worker thread." (This is required for the
+      Tiva CAN driver when error reporting is enabled.)
 - Under **Device Drivers**:
   - Enable “Analog Device Support”
   - Under **Analog Device Support**
