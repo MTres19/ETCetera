@@ -45,7 +45,7 @@
 #define CAN_ID_DTC_TX           0xBBBB0
 #define CAN_ID_FAULT_TX         0xBBBB1
 
-#define CAN_NUM_RX_MQUEUES          2
+#define CAN_NUM_RX_MQUEUES          1
 #define CAN_DRS_RX_MQUEUE_NAME      "/can.drs.rx"
 #define CAN_DRS_RX_MQUEUE_IDX       0
 

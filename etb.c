@@ -86,6 +86,7 @@
 
 int main(int argc, char **argv)
 {
+  boardctl(BOARDIOC_RELAY_ENABLE, 0);
   boardctl(BOARDIOC_ETB_DUTY, 10);
   
   return 0;

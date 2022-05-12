@@ -239,6 +239,17 @@ static void safing_subscription_update_dtcs_and_faults(void)
   
 }
 
+static void copy_fault_entry(struct can_msg_s *dest, struct fault_entry_s *src)
+{
+  dest->cm_data[0] = (uint8_t)(src->fault_code >> 8);
+  dest->cm_data[1] = (uint8_t)(src->fault_code & 0xff);
+  dest->cm_data[2] = src->keycycle;
+  dest->cm_data[3] = (uint8_t)(src->time_ms >> 24);
+  dest->cm_data[4] = (uint8_t)(src->time_ms >> 16);
+  dest->cm_data[5] = (uint8_t)(src->time_ms >> 8);
+  dest->cm_data[6] = (uint8_t)(src->time_ms & 0xff);
+}
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -262,7 +273,7 @@ int main(int argc, char **argv)
   txmq = mq_open(CAN_SAFING_TX_MQUEUE_NAME, O_RDWR | O_CREAT | O_NONBLOCK, 0600, &canmq_attr);
   
   txmsg.cm_hdr.ch_extid = true;
-  txmsg.cm_hdr.ch_dlc = 4;
+  txmsg.cm_hdr.ch_dlc = 8;
   
   safing_arm();
   
@@ -272,13 +283,14 @@ int main(int argc, char **argv)
   {
     if (g_fault_table[i].fault_code != FAULT_INVALID)
       {
-        memcpy(&txmsg.cm_data, &g_fault_table[i], sizeof(struct fault_entry_s));
-        
+        txmsg.cm_hdr.ch_id = CAN_ID_FAULT_TX;
+        copy_fault_entry(&txmsg, &g_fault_table[i]);
         mq_send(txmq, (const char *)&txmsg, CAN_MSGLEN(txmsg.cm_hdr.ch_dlc), 1);
       }
     if (g_dtc_table[j].fault_code != DTC_INVALID)
       {
-        memcpy(&txmsg.cm_data, &g_dtc_table[j], sizeof(struct fault_entry_s));
+        txmsg.cm_hdr.ch_id = CAN_ID_DTC_TX;
+        copy_fault_entry(&txmsg, &g_dtc_table[j]);
         mq_send(txmq, (const char *)&txmsg, CAN_MSGLEN(txmsg.cm_hdr.ch_dlc), 1);
       }
     

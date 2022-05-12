@@ -57,7 +57,8 @@ static void broadcast_sigusr1_sigaction(int signo, FAR siginfo_t *siginfo, FAR v
  ****************************************************************************/
 
 static char *tx_mqueue_names[CAN_NUM_TX_MQUEUES] = {
-  CAN_DRS_TX_MQUEUE_NAME
+  CAN_DRS_TX_MQUEUE_NAME,
+  CAN_SAFING_TX_MQUEUE_NAME
 };
 
 static char *rx_mqueue_names[CAN_NUM_RX_MQUEUES] = {
@@ -134,13 +135,6 @@ int main(int argc, char **argv)
     return -1;
   }
   
-  /* Register SIGUSR1 handler */
-  struct sigaction sigusr1_action = {
-    .sa_sigaction = &broadcast_sigusr1_sigaction,
-    .sa_flags = SA_SIGINFO
-  };
-  sigemptyset(&sigusr1_action.sa_mask);
-  sigaction(SIGUSR1, &sigusr1_action, NULL);
   
   /* Initialize tx message queues and attach to SIGUSR1 */
   
@@ -150,6 +144,14 @@ int main(int argc, char **argv)
     g_mq_sigusr1event.sigev_value.sival_ptr = &tx_mqueues[i];
     mq_notify(tx_mqueues[i], &g_mq_sigusr1event);
   }
+  
+  /* Register SIGUSR1 handler */
+  struct sigaction sigusr1_action = {
+    .sa_sigaction = &broadcast_sigusr1_sigaction,
+    .sa_flags = SA_SIGINFO
+  };
+  sigemptyset(&sigusr1_action.sa_mask);
+  sigaction(SIGUSR1, &sigusr1_action, NULL);
   
   /* Initialize rx message queues */
   for (i = 0; i < CAN_NUM_RX_MQUEUES; ++i)
