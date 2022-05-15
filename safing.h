@@ -107,6 +107,8 @@
 #define DTC_INITIAL_ARM_FAILED      DTC_P(32)
 #define DTC_5VAUX_STP               DTC_P(33)
 
+#define DTC_DRSBCK_STG              DTC_B(1)
+
 #define FAULT_INVALID               0
 #define FAULT_CAN_OPEN_FAILED       1
 #define FAULT_DRS_SOFTWARE          2

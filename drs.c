@@ -86,7 +86,7 @@
 
 int main(int argc, char **argv)
 {
-  int ret;
+  int ret = 0;
   struct can_msg_s txmsg;
   struct can_msg_s rxmsg;
   
@@ -104,7 +104,9 @@ int main(int argc, char **argv)
   txmsg.cm_hdr.ch_extid = true;
   txmsg.cm_hdr.ch_dlc = 4;
   txmsg.cm_hdr.ch_rtr = 0;
+#ifdef CONFIG_CAN_ERRORS
   txmsg.cm_hdr.ch_error = 0;
+#endif
   
   txmq = mq_open(CAN_DRS_TX_MQUEUE_NAME, O_RDWR | O_CREAT | O_NONBLOCK, 0600, &canmq_attr);
   rxmq = mq_open(CAN_DRS_RX_MQUEUE_NAME, O_RDWR | O_CREAT, 0600, &canmq_attr);
@@ -143,7 +145,12 @@ int main(int argc, char **argv)
           boardctl(BOARDIOC_DRS_ANGLE, *(uint16_t *)(&(rxmsg.cm_data[1])));
           if (!drs_powered)
           {
-            boardctl(BOARDIOC_DRS_START, 0);
+            ret = boardctl(BOARDIOC_DRS_START, 0);
+            if (ret < 0)
+            {
+              safing_store_dtc(DTC_DRSBCK_STG);
+              return -1;
+            }
             drs_powered = true;
           }
         }

@@ -87,23 +87,23 @@ int main(int argc, char **argv)
   
   task_create("drs",
               100,
-              CONFIG_SYSTEM_NSH_STACKSIZE,
+              2048,
               drs_main,
               NULL);
   task_create("safing",
               CONFIG_SYSTEM_NSH_PRIORITY,
-              CONFIG_SYSTEM_NSH_STACKSIZE,
+              2048,
               safing_main,
               NULL);
   task_create("can_broadcast",
               CONFIG_SYSTEM_NSH_PRIORITY,
-              CONFIG_SYSTEM_NSH_STACKSIZE,
+              2048,
               can_broadcast_main,
               NULL
               );
   task_create("etb",
               CONFIG_SYSTEM_NSH_PRIORITY,
-              CONFIG_SYSTEM_NSH_STACKSIZE,
+              2048,
               etb_main,
               NULL);
   /*

@@ -237,6 +237,9 @@ static void safing_subscription_update_dtcs_and_faults(void)
   if (g_safing_subscr.faultflags & SAFINGSIG_SAFING2_ARM_FAILED)
     safing_store_internal_fault(FAULT_ARM_FAILED_2);
   
+  if (g_safing_subscr.faultflags & SAFINGSIG_DRSBCK_STG)
+    safing_store_dtc(DTC_DRSBCK_STG);
+  
 }
 
 static void copy_fault_entry(struct can_msg_s *dest, struct fault_entry_s *src)
@@ -277,10 +280,25 @@ int main(int argc, char **argv)
   
   safing_arm();
   
+  int16_t *brk_f_value;
+  int16_t *brk_r_value;
+  
+  struct chan_subscription_s brk_subscription;
+  brk_subscription.tid = gettid();
+  
+  brk_subscription.ptr = &brk_f_value;
+  boardctl(BOARDIOC_BRK_F_SUBSCRIBE, (uintptr_t)&brk_subscription);
+  
+  brk_subscription.ptr = &brk_r_value;
+  boardctl(BOARDIOC_BRK_R_SUBSCRIBE, (uintptr_t)&brk_subscription);
+  
+  
   int i = 0;
   int j = 0;
   while(true)
   {
+    txmsg.cm_hdr.ch_extid = true;
+    
     if (g_fault_table[i].fault_code != FAULT_INVALID)
       {
         txmsg.cm_hdr.ch_id = CAN_ID_FAULT_TX;
@@ -303,6 +321,14 @@ int main(int argc, char **argv)
       j = 0;
     else
       ++j;
+    
+    txmsg.cm_hdr.ch_id = CAN_ID_BRAKE_TX;
+    txmsg.cm_hdr.ch_extid = false;
+    txmsg.cm_data[0] = (*brk_f_value) >> 8;
+    txmsg.cm_data[1] = (*brk_f_value) & 0xff;
+    txmsg.cm_data[2] = (*brk_r_value) >> 8;
+    txmsg.cm_data[3] = (*brk_r_value) & 0xff;
+    mq_send(txmq, (const char *)&txmsg, CAN_MSGLEN(txmsg.cm_hdr.ch_dlc), 1);
     
     usleep(50000);
   }
@@ -350,7 +376,7 @@ void safing_store_internal_fault(uint16_t fault_code)
     {
       g_fault_table[i].fault_code = fault_code;
       g_fault_table[i].time_ms = current_time.tv_sec * 1000 + current_time.tv_nsec / 1000000;
-      return;
+      break;
     }
   }
   

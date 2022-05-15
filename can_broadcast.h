@@ -42,6 +42,7 @@
 
 #define CAN_ID_DRS_STATUS_TX    0xAAAA1
 #define CAN_ID_DRS_CONTROL_RX   0xAAAA2
+#define CAN_ID_BRAKE_TX         0x1B0
 #define CAN_ID_DTC_TX           0xBBBB0
 #define CAN_ID_FAULT_TX         0xBBBB1
 
