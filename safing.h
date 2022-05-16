@@ -108,6 +108,14 @@
 #define DTC_5VAUX_STP               DTC_P(33)
 
 #define DTC_DRSBCK_STG              DTC_B(1)
+#define DTC_WSS1_OPEN               DTC_B(2)
+#define DTC_WSS2_OPEN               DTC_B(3)
+#define DTC_WSS3_OPEN               DTC_B(4)
+#define DTC_WSS4_OPEN               DTC_B(5)
+#define DTC_WSS1_STG                DTC_B(6)
+#define DTC_WSS2_STG                DTC_B(7)
+#define DTC_WSS3_STG                DTC_B(8)
+#define DTC_WSS4_STG                DTC_B(9)
 
 #define FAULT_INVALID               0
 #define FAULT_CAN_OPEN_FAILED       1

@@ -111,6 +111,29 @@ int main(int argc, char **argv)
   txmq = mq_open(CAN_DRS_TX_MQUEUE_NAME, O_RDWR | O_CREAT | O_NONBLOCK, 0600, &canmq_attr);
   rxmq = mq_open(CAN_DRS_RX_MQUEUE_NAME, O_RDWR | O_CREAT, 0600, &canmq_attr);
   
+  boardctl(BOARDIOC_DRS_ANGLE, 50);
+  ret = boardctl(BOARDIOC_DRS_START, 0);
+  if (ret <  0)
+    {
+      safing_store_dtc(DTC_DRSBCK_STG);
+      return -1;
+    }
+  
+  for (int i = 50; i < 130; ++i)
+  {
+    usleep(50000);
+    boardctl(BOARDIOC_DRS_ANGLE, i);
+  }
+  for (int i = 130 ; i > 0; --i)
+  {
+    usleep(50000);
+    boardctl(BOARDIOC_DRS_ANGLE, i);
+  }
+  
+  usleep(50000);
+  boardctl(BOARDIOC_DRS_ANGLE, 50);
+    
+  
   while(true)
     {
       clock_gettime(CLOCK_REALTIME, &mq_timeout);
