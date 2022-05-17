@@ -282,6 +282,10 @@ int main(int argc, char **argv)
   
   int16_t *brk_f_value;
   int16_t *brk_r_value;
+  int16_t *ws1;
+  int16_t *ws2;
+  int16_t *ws3;
+  int16_t *ws4;
   
   struct chan_subscription_s brk_subscription;
   brk_subscription.tid = gettid();
@@ -292,6 +296,10 @@ int main(int argc, char **argv)
   brk_subscription.ptr = &brk_r_value;
   boardctl(BOARDIOC_BRK_R_SUBSCRIBE, (uintptr_t)&brk_subscription);
   
+  boardctl(BOARDIOC_WS1_SUBSCRIBE, (uintptr_t)&ws1);
+  boardctl(BOARDIOC_WS2_SUBSCRIBE, (uintptr_t)&ws2);
+  boardctl(BOARDIOC_WS3_SUBSCRIBE, (uintptr_t)&ws3);
+  boardctl(BOARDIOC_WS4_SUBSCRIBE, (uintptr_t)&ws4);
   
   int i = 0;
   int j = 0;
@@ -328,6 +336,18 @@ int main(int argc, char **argv)
     txmsg.cm_data[1] = (*brk_f_value) & 0xff;
     txmsg.cm_data[2] = (*brk_r_value) >> 8;
     txmsg.cm_data[3] = (*brk_r_value) & 0xff;
+    mq_send(txmq, (const char *)&txmsg, CAN_MSGLEN(txmsg.cm_hdr.ch_dlc), 1);
+    
+    txmsg.cm_hdr.ch_id = CAN_ID_WS_TX;
+    txmsg.cm_hdr.ch_extid = false;
+    txmsg.cm_data[0] = (*ws1) >> 8;
+    txmsg.cm_data[1] = (*ws1) & 0xff;
+    txmsg.cm_data[2] = (*ws2) >> 8;
+    txmsg.cm_data[3] = (*ws2) & 0xff;
+    txmsg.cm_data[4] = (*ws3) >> 8;
+    txmsg.cm_data[5] = (*ws3) & 0xff;
+    txmsg.cm_data[6] = (*ws4) >> 8;
+    txmsg.cm_data[7] = (*ws4) & 0xff;
     mq_send(txmq, (const char *)&txmsg, CAN_MSGLEN(txmsg.cm_hdr.ch_dlc), 1);
     
     usleep(50000);

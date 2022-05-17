@@ -148,7 +148,7 @@ int main(int argc, char **argv)
 {
   
   boardctl(BOARDIOC_ETB_DUTY, 100);
-#if 0
+
   //int16_t *apps1;
   //int16_t *apps2;
   int32_t tps;
@@ -366,7 +366,6 @@ int main(int argc, char **argv)
   }
   
   } while(true);
-#endif
   
   return 0;
 }

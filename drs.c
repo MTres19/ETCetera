@@ -89,13 +89,26 @@ int main(int argc, char **argv)
   int ret = 0;
   struct can_msg_s txmsg;
   struct can_msg_s rxmsg;
+  int16_t last_speed = 0;
+  int16_t *speed; // cm/s
+  int16_t accel; // cm/s^2
+  int16_t *brk_f_value;
+  struct chan_subscription_s brk_subscription;
+  struct timespec current_time = {0};
+  struct timespec last_ctl_time = {0};
+  struct timespec delta_t = {0};
   
   mqd_t txmq;
   mqd_t rxmq;
   
+  brk_subscription.tid = gettid();
+  brk_subscription.ptr = &brk_f_value;
+  boardctl(BOARDIOC_BRK_F_SUBSCRIBE, (uintptr_t)&brk_subscription);
+  boardctl(BOARDIOC_WS1_SUBSCRIBE, (uintptr_t)&speed);
+  
   struct timespec mq_timeout;
   const struct timespec canmq_wait_time =
-    { .tv_sec = 0, .tv_nsec = 500 * NSEC_PER_MSEC };
+    { .tv_sec = 0, .tv_nsec = 50 * NSEC_PER_MSEC };
   const struct mq_attr canmq_attr =
     { .mq_maxmsg = 3, .mq_msgsize = sizeof(rxmsg) };
   bool drs_powered = false;
@@ -121,29 +134,58 @@ int main(int argc, char **argv)
   
   for (int i = 50; i < 130; ++i)
   {
-    usleep(50000);
+    usleep(20000);
     boardctl(BOARDIOC_DRS_ANGLE, i);
   }
   for (int i = 130 ; i > 0; --i)
   {
-    usleep(50000);
+    usleep(20000);
     boardctl(BOARDIOC_DRS_ANGLE, i);
   }
   
-  usleep(50000);
-  boardctl(BOARDIOC_DRS_ANGLE, 50);
-    
+  sleep(1);
+  boardctl(BOARDIOC_DRS_ANGLE, 130);
   
   while(true)
     {
       clock_gettime(CLOCK_REALTIME, &mq_timeout);
+      
       clock_timespec_add(&canmq_wait_time, &mq_timeout, &mq_timeout);
       ret = mq_timedreceive(rxmq, (char *)&rxmsg, sizeof(rxmsg), NULL, &mq_timeout);
       if (ret < 0 && errno == ETIMEDOUT)
       {
         // Control based on wheel speed and steering angle
-        boardctl(BOARDIOC_DRS_STOP, 0);
-        drs_powered = false;
+        clock_gettime(CLOCK_REALTIME, &current_time);
+        clock_timespec_subtract(&current_time, &last_ctl_time, &delta_t);
+        
+        if (delta_t.tv_sec > 0 || delta_t.tv_nsec > 60 * NSEC_PER_MSEC || delta_t.tv_nsec == 0)
+        {
+          accel = 0;
+        }
+        else
+        {
+          accel = (*speed - last_speed) * (NSEC_PER_SEC / delta_t.tv_nsec);
+        }
+        
+        if (accel < -100)
+        {
+          boardctl(BOARDIOC_DRS_ANGLE, 0);
+        }
+        else if (accel > 10)
+        {
+          boardctl(BOARDIOC_DRS_ANGLE, 130);
+        }
+        else if (*brk_f_value > 500)
+        {
+          boardctl(BOARDIOC_DRS_ANGLE, 0);
+        }
+        else if (*speed < 10)
+        {
+          boardctl(BOARDIOC_DRS_ANGLE, 130);
+        }
+        
+        last_speed = *speed;
+        last_ctl_time = current_time;
         txmsg.cm_data[0] = 0;
         
       }
