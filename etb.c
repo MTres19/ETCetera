@@ -46,7 +46,7 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define SPRING_TABLE_SIZE 16
+#define SPRING_TABLE_SIZE 4
 
 /****************************************************************************
  * Private Types
@@ -71,6 +71,13 @@ static int16_t *g_tps1;
 static int16_t *g_tps2;
 static uint8_t g_frozen_channels;
 static sem_t g_tps_avg_sem;
+
+
+static struct spring_table_s g_spring_table =
+{
+  .tps = {10, 25, 40, 70},
+  .duty = {0, 150, 250, 300}
+};
 
 
 /****************************************************************************
@@ -129,7 +136,36 @@ static uint16_t get_tps_average(void)
   
   return (*g_tps1 + *g_tps2) / 2;
 }
-  
+
+
+int16_t get_feedforward_duty(void)
+{
+  int idx;
+  int16_t tps;
+  tps = get_tps_average();
+  if (tps <= g_spring_table.tps[0])
+  {
+    return g_spring_table.duty[0];
+  }
+  else if (tps >= g_spring_table.tps[SPRING_TABLE_SIZE - 1])
+  {
+    return g_spring_table.duty[SPRING_TABLE_SIZE - 1];
+  }
+  else
+  {
+    for (idx = 1; idx < SPRING_TABLE_SIZE; ++idx)
+    {
+      if (tps < g_spring_table.tps[idx])
+      {
+        return g_spring_table.duty[idx - 1]
+              + (g_spring_table.duty[idx] - g_spring_table.duty[idx - 1])
+                  / (g_spring_table.tps[idx] - g_spring_table.tps[idx - 1])
+                  * (tps - g_spring_table.tps[idx - 1]);
+      }
+    }
+  }
+  return g_spring_table.duty[SPRING_TABLE_SIZE - 1];
+}
 
 /****************************************************************************
  * Public Functions
@@ -146,17 +182,18 @@ static uint16_t get_tps_average(void)
 
 int main(int argc, char **argv)
 {
-  
-  boardctl(BOARDIOC_ETB_DUTY, 100);
-
   //int16_t *apps1;
   //int16_t *apps2;
   int32_t tps;
   //int32_t apps;
   int16_t lhp; /* limp home position */
+  int16_t ums; /* upper mechanical stop */
   int i;
   
-  struct spring_table_s spring_table;
+  sigset_t normal_sigmask;
+  sigset_t sleep_sigmask;
+  sigfillset(&sleep_sigmask);
+  
   
   struct sigaction sigstop_action = {
     .sa_sigaction = etb_sigstop_sigaction,
@@ -190,7 +227,9 @@ int main(int argc, char **argv)
   boardctl(BOARDIOC_RELAY_ENABLE, 0);
   
   /* Wait for shutdown circuit to arm */
-  usleep(200000);
+  sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+  sleep(5);
+  sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
   
   tps = get_tps_average();
   //apps = (*apps1 + *apps2) /2;
@@ -199,172 +238,258 @@ int main(int argc, char **argv)
   
   do
   {
-  
-  usleep(50000);
-  
-  for (i = 100; i < 400; i = i + 2)
-  {
-    tps = get_tps_average();
+    boardctl(BOARDIOC_ETB_DUTY, 350);
+    sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+    sleep(2);
+    sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
     
-    if (tps > lhp + 2500)
+    tps = get_tps_average();
+    if (tps > 10000)
     {
-      break;
+      ums = tps;
     }
     else
     {
-      boardctl(BOARDIOC_ETB_DUTY, i);
-      usleep(50000);
+        boardctl(BOARDIOC_ETB_DUTY, 0);
+        sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+        sleep(1);
+        sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+        continue;
     }
-  }
-  
-  if (i == 400)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, 0);
-    sleep(2);
-    continue;
-  }
-  
-  usleep(500000);
-  
-  if (tps > 8000)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, 0);
-    sleep(2);
-    continue;
-  }
-  
-  uint16_t test_duty;
-  test_duty = i;
-  
-  /* Return to zero so we can reliably reproduce the test position quickly */
-  boardctl(BOARDIOC_ETB_DUTY, 0);
-  usleep(500000); // Ensure ETB is at rest
-  
-  boardctl(BOARDIOC_ETB_DUTY, test_duty);
-  sleep(2); // Ensure ETB is at rest
-  
-  int16_t test_pos;
-  tps = get_tps_average();
-  test_pos = tps;
-  
-  for (i = test_duty; i > 0; --i)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, i);
-    usleep(50000);
-    tps = get_tps_average();
-    if (tps < test_pos - 50)
-    {
-      break;
-    }
-  }
-  
-  if (i == 0)
-  {
-    sleep(2);
-    continue;
-  }
-  
-  uint16_t test_duty_lower = i;
-  
-  boardctl(BOARDIOC_ETB_DUTY, 0);
-  usleep(500000); // Ensure ETB is at rest
-  
-  boardctl(BOARDIOC_ETB_DUTY, test_duty);
-  sleep(2);
-  
-  tps = get_tps_average();
-  if (tps > test_pos + 20 || tps < test_pos - 20)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, 0);
-    sleep(2);
-    continue;
-    //return -EIO;
-  }
-  
-  test_pos = get_tps_average();
-  
-  for (i = test_duty; i < 600; ++i)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, i);
-    usleep(50000);
-    tps = get_tps_average();
-    if (tps > test_pos + 50)
-    {
-      break;
-    }
-  }
-  
-  if (i == 600)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, 0);
-    sleep(2);
-    continue;
-  }
-  
-  uint16_t test_duty_upper = i;
-  
-  int16_t static_friction = (test_duty_upper - test_duty_lower) / 2;
-  
-  /* Slowly bring the valve to UMS (upper mechanical stop) */
-  int16_t last_tps;
-  
-  for (i = test_duty; i < 600; ++i)
-  {
-    last_tps = tps;
-    boardctl(BOARDIOC_ETB_DUTY, i);
-    usleep(50000);
-    tps = get_tps_average();
-    if (tps > 10000 && tps < last_tps + 20)
-    {
-      break;
-    }
-  }
-  
-  if (i == 600)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, 0);
-    sleep(2);
-    continue;
-  }
-  
-  /* Slowly lower the valve down from UMS; the input torque at which it breaks
-   * loose and starts to move is equal to spring torque minus static friction.
-   * Record the first spring torque in the table. Every time the ETB moves
-   * thereafter, record a new point in the table if the torque is "significantly"
-   * different than the previous one (we'll use 1% duty cycle).
-   */
-  last_tps = tps;
-  uint16_t last_duty;
-  last_duty = i;
-  int spring_table_idx = SPRING_TABLE_SIZE;
-  for (/* i already set */ ; i > 0 && spring_table_idx >= 0; --i)
-  {
-    boardctl(BOARDIOC_ETB_DUTY, i);
-    usleep(50000);
-    tps = get_tps_average();
     
-    if (tps < last_tps - 20)
+    boardctl(BOARDIOC_ETB_DUTY, 0);
+    while(true)
     {
-      /* The ETB moved */
-      if (spring_table_idx == SPRING_TABLE_SIZE || last_duty - i >= 10)
+      tps = get_tps_any();
+      if (tps <= 3500)
       {
-        spring_table.tps[spring_table_idx] = last_tps;
-        spring_table.duty[spring_table_idx] = i + static_friction;
-        --spring_table_idx;
-        last_duty = i;
+        boardctl(BOARDIOC_ETB_DUTY, 150);
+        break;
       }
-      
-      last_tps = tps;
+      else
+      {
+        sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+        usleep(1000);
+        sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      }
     }
-  }
-  
-  while (true)
-  {
-    usleep(10000);
     
-    boardctl(BOARDIOC_ETB_DUTY, 100);
-  }
-  
+    int16_t actual_position;
+    actual_position = get_tps_average();
+    
+#if 0
+    for (i = 280; i < 400; i = i + 1)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, i);
+      
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(5);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      
+      tps = get_tps_average();
+      
+      if (tps > lhp + 3500)
+      {
+        break;
+      }
+      else
+      {
+        boardctl(BOARDIOC_ETB_DUTY, 0);
+        sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+        sleep(1);
+        sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      }
+    }
+    
+    if (i == 400)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, 0);
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(2);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      continue;
+    }
+    
+    uint16_t test_duty;
+    int16_t test_pos;
+    
+    /* The first attempt that succeeds in reaching a position greater than 35%
+     * may not be reliably reproducable; use a slightly larger duty cyle to
+     * improve it.
+     */
+    test_duty = i + 3;
+    
+    /* Ensure we can reliably reproduce this position */
+    boardctl(BOARDIOC_ETB_DUTY, 0);
+    sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+    sleep(1);
+    boardctl(BOARDIOC_ETB_DUTY, test_duty);
+    sleep(5); // Ensure ETB is at rest
+    sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+    test_pos = get_tps_average();
+    
+    boardctl(BOARDIOC_ETB_DUTY, 0);
+    sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+    sleep(1);
+    boardctl(BOARDIOC_ETB_DUTY, test_duty);
+    sleep(5);
+    sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+    
+    tps = get_tps_average();
+    if (test_pos - tps > 20 || test_pos - tps < -20)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, 0);
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(2);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      continue;
+    }
+    
+    test_pos = tps;
+    
+    for (i = test_duty; i > 0; --i)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, i);
+      
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(1);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      
+      tps = get_tps_average();
+      if (tps < test_pos - 20)
+      {
+        break;
+      }
+    }
+    
+    if (i == 0)
+    {
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(2);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      
+      continue;
+    }
+    
+    uint16_t test_duty_lower = i;
+    
+    boardctl(BOARDIOC_ETB_DUTY, 0);
+    
+    sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+    sleep(1); // Ensure ETB is at rest
+    
+    boardctl(BOARDIOC_ETB_DUTY, test_duty);
+    sleep(5);
+    sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+    
+    tps = get_tps_average();
+    if (tps > test_pos + 20 || tps < test_pos - 20)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, 0);
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(2);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      continue;
+      //return -EIO;
+    }
+    
+    test_pos = get_tps_average();
+    
+    for (i = test_duty; i < 600; ++i)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, i);
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(1);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      
+      tps = get_tps_average();
+      if (tps > test_pos + 20)
+      {
+        break;
+      }
+    }
+    
+    if (i == 600)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, 0);
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(2);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      continue;
+    }
+    
+    uint16_t test_duty_upper = i;
+    
+    int16_t static_friction = (test_duty_upper - test_duty_lower) / 2;
+    
+    /* Slowly bring the valve to UMS (upper mechanical stop) */
+    int16_t last_tps;
+    
+    for (i = test_duty; i < 600; ++i)
+    {
+      last_tps = tps;
+      boardctl(BOARDIOC_ETB_DUTY, i);
+      
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      usleep(50000);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      
+      tps = get_tps_average();
+      if (tps > 10000 && tps < last_tps + 20)
+      {
+        break;
+      }
+    }
+    
+    if (i == 600)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, 0);
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(2);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      continue;
+    }
+    
+    /* Slowly lower the valve down from UMS; the input torque at which it breaks
+    * loose and starts to move is equal to spring torque minus static friction.
+    * Record the first spring torque in the table. Every time the ETB moves
+    * thereafter, record a new point in the table if the torque is "significantly"
+    * different than the previous one (we'll use 1% duty cycle).
+    */
+    last_tps = tps;
+    uint16_t last_duty;
+    last_duty = i;
+    int spring_table_idx = SPRING_TABLE_SIZE;
+    for (/* i already set */ ; i > 0 && spring_table_idx >= 0; --i)
+    {
+      boardctl(BOARDIOC_ETB_DUTY, i);
+      
+      sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+      sleep(1);
+      sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+      
+      tps = get_tps_average();
+      
+      if (tps < last_tps - 20)
+      {
+        /* The ETB moved */
+        if (spring_table_idx == SPRING_TABLE_SIZE || last_duty - i >= 10)
+        {
+          spring_table.tps[spring_table_idx] = last_tps;
+          spring_table.duty[spring_table_idx] = i + static_friction;
+          --spring_table_idx;
+          last_duty = i;
+        }
+        
+        last_tps = tps;
+      }
+    }
+#endif
+    
+    sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+    sleep(5);
+    sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
+    
   } while(true);
   
   return 0;

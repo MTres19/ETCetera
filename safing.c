@@ -62,6 +62,7 @@ struct fault_entry_s
 static int safing_check_sensor_ranges(void);
 static void safing_subscription_update_dtcs_and_faults(void);
 static void safing_sigusr1_handler(int signo);
+static void safing_5v0lin_sense_retry_handler(int signo);
 
 /****************************************************************************
  * Private Data
@@ -73,6 +74,27 @@ static struct fault_entry_s g_dtc_table[SAFING_NUM_DTC_ENTRIES] = {0};
 static struct fault_entry_s g_fault_table[SAFING_NUM_FAULT_ENTRIES] = {0};
 
 static struct safing_subscription_s g_safing_subscr;
+
+
+static struct sigevent g_retry_5v0lin_sense_event = {
+  .sigev_notify = SIGEV_SIGNAL,
+  .sigev_signo = SIGUSR2,
+  .sigev_value = {.sival_ptr = NULL},
+};
+static const struct itimerspec g_retry_5v0lin_sense_delay =  {
+  .it_value = {
+    .tv_sec = 0,
+    .tv_nsec = 5 * NSEC_PER_MSEC
+  },
+  .it_interval = {0}
+};
+
+
+#define RETRY_5V0LIN_SENSE_NOT_RETRYING 0
+#define RETRY_5V0LIN_SENSE_WAITING 1
+#define RETRY_5V0LIN_SENSE_RETRYING 2
+int g_retrying_5v0lin_sense = RETRY_5V0LIN_SENSE_NOT_RETRYING;
+static timer_t g_retry_5v0lin_sense_timer;
 
 /****************************************************************************
  * Public Data
@@ -94,8 +116,17 @@ static void safing_arm(void)
     .sa_handler = safing_sigusr1_handler,
     .sa_flags = 0
   };
+  struct sigaction sigusr2_action = {
+    .sa_handler = safing_5v0lin_sense_retry_handler,
+    .sa_flags = 0
+  };
   sigemptyset(&sigusr1_action.sa_mask);
+  sigemptyset(&sigusr2_action.sa_mask);
   sigaction(SIGUSR1, &sigusr1_action, NULL);
+  sigaction(SIGUSR2, &sigusr2_action, NULL);
+  sigset_t normal_sigmask;
+  sigset_t sleep_sigmask;
+  sigfillset(&sleep_sigmask);
   
   boardctl(BOARDIOC_SAFING_SUBSCRIBE, (uintptr_t)&g_safing_subscr);
   
@@ -109,7 +140,9 @@ static void safing_arm(void)
   }
   
   /* Allow sensors to settle */
-  usleep(50000);
+  sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+  ret = usleep(50000);
+  sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
   
   /* Software check of sensor ranges and correlation */
   ret = safing_check_sensor_ranges();
@@ -129,9 +162,12 @@ static void safing_arm(void)
   }
   
   /* Wait 100 ms to ensure the open-line detection circuit does not
-   * find any faults.
+   * find any faults. Disable signals while doing this; otherwise
+   * usleep may return early.
    */
-  usleep(100000);
+  sigprocmask(SIG_SETMASK, &sleep_sigmask, &normal_sigmask);
+  ret = usleep(200000);
+  sigprocmask(SIG_SETMASK, &normal_sigmask, NULL);
   
   /* Read arm/safing status (must be disarmed with safing active),
    * send arming signal, enable edge interrupts to detect unexpected
@@ -157,11 +193,41 @@ static void safing_sigusr1_handler(int signo)
   safing_subscription_update_dtcs_and_faults();
 }
 
+static void safing_5v0lin_sense_retry_handler(int signo)
+{
+  int ret = 0;
+  
+  if (g_retrying_5v0lin_sense == RETRY_5V0LIN_SENSE_WAITING)
+  {
+    g_retrying_5v0lin_sense = RETRY_5V0LIN_SENSE_RETRYING;
+    boardctl(BOARDIOC_5V0LIN_SENSE_RETRY_ARM, 0);
+    timer_settime(g_retry_5v0lin_sense_timer, 0, &g_retry_5v0lin_sense_delay, NULL);
+  }
+  else
+  {
+    g_retrying_5v0lin_sense = RETRY_5V0LIN_SENSE_NOT_RETRYING;
+    ret = boardctl(BOARDIOC_5V0LIN_SENSE_RETRY_CHECK, 0);
+    if (ret != 0)
+    {
+      safing_store_dtc(DTC_5V0LIN_SENSE_STG);
+    }
+  }
+}
+
 static void safing_subscription_update_dtcs_and_faults(void)
 {
   if (g_safing_subscr.faultflags & SAFINGSIG_5V0LIN_SENSE_STG)
-    safing_store_dtc(DTC_5V0LIN_SENSE_STG);
+  {
+    if (g_retrying_5v0lin_sense == RETRY_5V0LIN_SENSE_NOT_RETRYING)
+    {
+      g_retrying_5v0lin_sense = RETRY_5V0LIN_SENSE_WAITING;
+      
+      /* Get a callback signal in a few milliseconds */
+      timer_settime(g_retry_5v0lin_sense_timer, 0, &g_retry_5v0lin_sense_delay, NULL);
+    }
+  }
   
+  /* 5V0LIN_SENSE successfully reenabled */
   if (g_safing_subscr.faultflags & SAFINGSIG_STP_APPS1)
     safing_store_dtc(DTC_APPS1_STP);
   
@@ -278,8 +344,9 @@ int main(int argc, char **argv)
   txmsg.cm_hdr.ch_extid = true;
   txmsg.cm_hdr.ch_dlc = 8;
   
+  timer_create(CLOCK_REALTIME, &g_retry_5v0lin_sense_event, &g_retry_5v0lin_sense_timer);
   safing_arm();
-  
+
   int16_t *brk_f_value;
   int16_t *brk_r_value;
   int16_t *ws1;

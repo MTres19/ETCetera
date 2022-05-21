@@ -104,7 +104,7 @@ int main(int argc, char **argv)
   brk_subscription.tid = gettid();
   brk_subscription.ptr = &brk_f_value;
   boardctl(BOARDIOC_BRK_F_SUBSCRIBE, (uintptr_t)&brk_subscription);
-  boardctl(BOARDIOC_WS1_SUBSCRIBE, (uintptr_t)&speed);
+  boardctl(BOARDIOC_WS2_SUBSCRIBE, (uintptr_t)&speed);
   
   struct timespec mq_timeout;
   const struct timespec canmq_wait_time =
@@ -175,11 +175,11 @@ int main(int argc, char **argv)
         {
           boardctl(BOARDIOC_DRS_ANGLE, 130);
         }
-        else if (*brk_f_value > 500)
+        else if (*brk_f_value > 600)
         {
           boardctl(BOARDIOC_DRS_ANGLE, 0);
         }
-        else if (*speed < 10)
+        else if (*speed < 10 && *brk_f_value < 400)
         {
           boardctl(BOARDIOC_DRS_ANGLE, 130);
         }
