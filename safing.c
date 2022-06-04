@@ -319,6 +319,11 @@ static void copy_fault_entry(struct can_msg_s *dest, struct fault_entry_s *src)
   dest->cm_data[6] = (uint8_t)(src->time_ms & 0xff);
 }
 
+static void safing_sigint_sigaction(int signo, siginfo_t *siginfo, void *context)
+{
+
+}
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -353,7 +358,21 @@ int main(int argc, char **argv)
   int16_t *ws2;
   int16_t *ws3;
   int16_t *ws4;
-  
+  int16_t *button_states;
+
+  struct sigaction sigint_action =
+  {
+    .sa_sigaction = safing_sigint_sigaction,
+    .sa_flags     = SA_SIGINFO
+  };
+  sigemptyset(&sigint_action.sa_mask);
+  sigaction(SIGINT, &sigint_action, NULL);
+
+  struct chan_subscription_s buttons_subscription;
+  buttons_subscription.tid = gettid();
+  buttons_subscription.ptr = &button_states;
+  boardctl(BOARDIOC_BUTTONS_SUBSCRIBE, (uintptr_t)&buttons_subscription);
+
   struct chan_subscription_s brk_subscription;
   brk_subscription.tid = gettid();
   
